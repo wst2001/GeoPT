@@ -57,6 +57,8 @@ parser.add_argument('--eval', type=int, default=0, help='evaluation or not')
 parser.add_argument('--save_name', type=str, default='Transolver_check', help='name of folders')
 parser.add_argument('--vis_num', type=int, default=10, help='number of visualization cases')
 parser.add_argument('--vis_bound', type=int, nargs='+', default=None, help='size of region for visualization, in list')
+parser.add_argument('--extract_feature', type=int, default=0,
+                    help='save extracted features during test when set to 1')
 
 ## finetune
 parser.add_argument('--finetune', type=int, default=0, help='finetune or not')

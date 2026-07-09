@@ -1,4 +1,4 @@
-h5py==3.8.0
+h5py>=3.11
 scipy==1.7.3
 torch
 vtk

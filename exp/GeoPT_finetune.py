@@ -165,7 +165,9 @@ class Exp_Steady(Exp_Basic):
         id = 0
         mse = 0.0
         mae = 0.0
+        mean_features = []
         myloss = L2Loss(size_average=False)
+        extract_feature = bool(getattr(self.args, "extract_feature", 0))
 
         with torch.no_grad():
             for pos, fx, cond, y in self.test_loader:
@@ -175,7 +177,11 @@ class Exp_Steady(Exp_Basic):
                 fx = torch.cat((fx, v), dim=-1)
                 if self.args.fun_dim == 0:
                     fx = None
-                out = self.model(x[:, :, :3], fx)
+                if extract_feature:
+                    out, mean_feature = self.model(x[:, :, :3], fx, return_feature=True)
+                    mean_features.append(mean_feature.cpu())
+                else:
+                    out = self.model(x[:, :, :3], fx)
                 if self.args.normalize:
                     out = self.dataset.y_normalizer.decode(out)
                 tl = myloss(out, y).item()
@@ -198,6 +204,11 @@ class Exp_Steady(Exp_Basic):
         print("test mae:{}".format(mae))
         print("test rel_err split:{}".format(rel_err_split))
         print("test rel_err split max:{}".format(rel_err_split_max))
+        if extract_feature:
+            mean_features = torch.cat(mean_features, dim=0).numpy()
+            feature_path = os.path.join('./results', self.args.save_name, 'mean_features.npy')
+            np.save(feature_path, mean_features)
+            print(f"saved mean features:{feature_path}, shape:{mean_features.shape}")
 
     def test_full_mesh(self):
         self.model.load_state_dict(torch.load("./checkpoints/" + self.args.save_name + ".pt"))
@@ -211,7 +222,9 @@ class Exp_Steady(Exp_Basic):
         id = 0
         mse = 0.0
         mae = 0.0
+        mean_features = []
         myloss = L2Loss(size_average=False)
+        extract_feature = bool(getattr(self.args, "extract_feature", 0))
 
         with torch.no_grad():
             for pos, fx, cond, y in self.test_loader_full:
@@ -221,7 +234,11 @@ class Exp_Steady(Exp_Basic):
                 fx = torch.cat((fx, v), dim=-1)
                 if self.args.fun_dim == 0:
                     fx = None
-                out = self.model(x[:, :, :3], fx)
+                if extract_feature:
+                    out, mean_feature = self.model(x[:, :, :3], fx, return_feature=True)
+                    mean_features.append(mean_feature.cpu())
+                else:
+                    out = self.model(x[:, :, :3], fx)
                 if self.args.normalize:
                     out = self.dataset.y_normalizer.decode(out)
                 tl = myloss(out, y).item()
@@ -244,3 +261,8 @@ class Exp_Steady(Exp_Basic):
         print("test mae:{}".format(mae))
         print("test rel_err split:{}".format(rel_err_split))
         print("test rel_err split max:{}".format(rel_err_split_max))
+        if extract_feature:
+            mean_features = torch.cat(mean_features, dim=0).numpy()
+            feature_path = os.path.join('./results', self.args.save_name, 'mean_features_full.npy')
+            np.save(feature_path, mean_features)
+            print(f"saved full-mesh mean features:{feature_path}, shape:{mean_features.shape}")

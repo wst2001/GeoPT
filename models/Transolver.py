@@ -83,11 +83,14 @@ class Transolver_block(nn.Module):
             self.ln_3 = nn.LayerNorm(hidden_dim)
             self.mlp2 = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self, fx):
+    def forward(self, fx, return_feature=False):
         fx = self.Attn(self.ln_1(fx)) + fx
         fx = self.mlp(self.ln_2(fx)) + fx
         if self.last_layer:
-            return self.mlp2(self.ln_3(fx))
+            out = self.mlp2(self.ln_3(fx))
+            if return_feature:
+                return out, fx
+            return out
         else:
             return fx
 
@@ -127,7 +130,7 @@ class Model(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def structured_geo(self, x, fx):
+    def structured_geo(self, x, fx, return_feature=False):
         if self.args.unified_pos:
             x = self.pos.repeat(x.shape[0], 1, 1)
         if fx is not None:
@@ -137,14 +140,21 @@ class Model(nn.Module):
             fx = self.preprocess(x)
         fx = fx + self.placeholder[None, None, :]
 
+        mean_feature = None
         for block in self.blocks:
-            if self.args.checkpoint:
+            if return_feature and block.last_layer:
+                out, feature = block(fx, return_feature=True)
+                fx = out
+                mean_feature = feature.mean(dim=1)
+            elif self.args.checkpoint:
                 fx = checkpoint.checkpoint(block, fx)
             else:
                 fx = block(fx)
+        if return_feature:
+            return fx, mean_feature
         return fx
 
-    def unstructured_geo(self, x, fx):
+    def unstructured_geo(self, x, fx, return_feature=False):
         if fx is not None:
             fx = torch.cat((x, fx), -1)
             fx = self.preprocess(fx)
@@ -152,15 +162,22 @@ class Model(nn.Module):
             fx = self.preprocess(x)
         fx = fx + self.placeholder[None, None, :]
 
+        mean_feature = None
         for block in self.blocks:
-            if self.args.checkpoint:
+            if return_feature and block.last_layer:
+                out, feature = block(fx, return_feature=True)
+                fx = out
+                mean_feature = feature.mean(dim=1)
+            elif self.args.checkpoint:
                 fx = checkpoint.checkpoint(block, fx)
             else:
                 fx = block(fx)
+        if return_feature:
+            return fx, mean_feature
         return fx
 
-    def forward(self, x, fx):
+    def forward(self, x, fx, return_feature=False):
         if self.args.geotype == 'unstructured':
-            return self.unstructured_geo(x, fx)
+            return self.unstructured_geo(x, fx, return_feature=return_feature)
         else:
-            return self.structured_geo(x, fx)
+            return self.structured_geo(x, fx, return_feature=return_feature)
