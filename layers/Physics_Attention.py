@@ -29,7 +29,7 @@ class Physics_Attention_Irregular_Mesh(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, return_feature=False, vis=False):
+    def forward(self, x, return_feature=False, vis=False, mask=None):
         # B N C
         B, N, C = x.shape
 
@@ -39,6 +39,11 @@ class Physics_Attention_Irregular_Mesh(nn.Module):
         x_mid = self.in_project_x(x).reshape(B, N, self.heads, self.dim_head) \
             .permute(0, 2, 1, 3).contiguous()  # B H N C
         slice_weights = self.softmax(self.in_project_slice(x_mid) / self.temperature)  # B H N G
+        if mask is not None:
+            # Zeroing the slice weights of invalid points removes them from both the
+            # slice-token sum and its normalizer, so padded entries cannot leak into
+            # the physical states shared across points.
+            slice_weights = slice_weights * mask.to(slice_weights.dtype)[:, None, :, None]
         if vis:
             np.save("slice_weights.npy", slice_weights.detach().cpu().numpy())
         slice_norm = slice_weights.sum(2)  # B H G

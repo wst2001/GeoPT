@@ -161,7 +161,13 @@ cython_debug/
 
 /hf_data
 /docs
-/checkpoints
+# Ignore the checkpoints directory, but ship the small pre-trained encoder (15MB)
+# so feature extraction works out of the box. The downstream finetuned .pt files
+# stay out of the repo.
+/checkpoints/*
+!/checkpoints/GeoPT_8layers.pt
+!/checkpoints/config.json
+!/checkpoints/README.md
 /aircraft_npys
 /training_logs
 /car_crash_npys

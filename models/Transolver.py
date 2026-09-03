@@ -1,7 +1,11 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from timm.models.layers import trunc_normal_
+
+try:
+    from timm.models.layers import trunc_normal_
+except ImportError:  # timm is only needed for weight init, torch ships the same op
+    from torch.nn.init import trunc_normal_
 from layers.Physics_Attention import Physics_Attention_Irregular_Mesh
 from layers.Physics_Attention import Physics_Attention_Structured_Mesh_1D
 from layers.Physics_Attention import Physics_Attention_Structured_Mesh_2D
@@ -25,6 +29,14 @@ ACTIVATION = {
     'ELU': nn.ELU,
     'silu': nn.SiLU
 }
+
+
+def masked_mean(feature, mask=None):
+    """Average per-point features over the point dim, ignoring invalid points."""
+    if mask is None:
+        return feature.mean(dim=1)
+    w = mask.to(feature.dtype)[:, :, None]
+    return (feature * w).sum(dim=1) / w.sum(dim=1).clamp(min=1e-5)
 
 
 class MLP(nn.Module):
@@ -83,8 +95,11 @@ class Transolver_block(nn.Module):
             self.ln_3 = nn.LayerNorm(hidden_dim)
             self.mlp2 = nn.Linear(hidden_dim, out_dim)
 
-    def forward(self, fx, return_feature=False):
-        fx = self.Attn(self.ln_1(fx)) + fx
+    def forward(self, fx, return_feature=False, mask=None):
+        if mask is None:
+            fx = self.Attn(self.ln_1(fx)) + fx
+        else:
+            fx = self.Attn(self.ln_1(fx), mask=mask) + fx
         fx = self.mlp(self.ln_2(fx)) + fx
         if self.last_layer:
             out = self.mlp2(self.ln_3(fx))
@@ -154,7 +169,7 @@ class Model(nn.Module):
             return fx, mean_feature
         return fx
 
-    def unstructured_geo(self, x, fx, return_feature=False):
+    def unstructured_geo(self, x, fx, return_feature=False, mask=None, return_point_feature=False):
         if fx is not None:
             fx = torch.cat((x, fx), -1)
             fx = self.preprocess(fx)
@@ -163,21 +178,33 @@ class Model(nn.Module):
         fx = fx + self.placeholder[None, None, :]
 
         mean_feature = None
+        point_feature = None
+        want_feature = return_feature or return_point_feature
         for block in self.blocks:
-            if return_feature and block.last_layer:
-                out, feature = block(fx, return_feature=True)
+            if want_feature and block.last_layer:
+                out, feature = block(fx, return_feature=True, mask=mask)
                 fx = out
-                mean_feature = feature.mean(dim=1)
+                if return_point_feature:
+                    point_feature = feature
+                if return_feature:
+                    mean_feature = masked_mean(feature, mask)
             elif self.args.checkpoint:
-                fx = checkpoint.checkpoint(block, fx)
+                fx = checkpoint.checkpoint(block, fx, False, mask)
             else:
-                fx = block(fx)
+                fx = block(fx, mask=mask)
+        if return_feature and return_point_feature:
+            return fx, mean_feature, point_feature
+        if return_point_feature:
+            return fx, point_feature
         if return_feature:
             return fx, mean_feature
         return fx
 
-    def forward(self, x, fx, return_feature=False):
+    def forward(self, x, fx, return_feature=False, mask=None, return_point_feature=False):
         if self.args.geotype == 'unstructured':
-            return self.unstructured_geo(x, fx, return_feature=return_feature)
+            return self.unstructured_geo(x, fx, return_feature=return_feature, mask=mask,
+                                         return_point_feature=return_point_feature)
         else:
+            if mask is not None or return_point_feature:
+                raise NotImplementedError('mask / per-point features are only supported for unstructured geometry')
             return self.structured_geo(x, fx, return_feature=return_feature)

@@ -1,0 +1,26 @@
+{
+  "model_type": "geopt",
+  "architecture": "Transolver",
+  "task": "physics_simulation",
+
+  "input": {
+    "coord_dim": 3,
+    "sdf_dim": 1,
+    "normal_dim": 3,
+    "condition_dim": 4
+  },
+
+  "output": {
+    "dynamics_trajectory_dim": 9
+  },
+
+  "models": {
+    "8-layers": {
+      "hidden_dim": 256,
+      "num_layers": 8,
+      "num_heads": 8,
+      "slice_num": 32,
+      "mlp_ratio": 2
+    }
+  }
+}
